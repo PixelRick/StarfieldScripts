@@ -1,9 +1,7 @@
-from struct import unpack, unpack_from, calcsize
+from struct import unpack
 from collections import namedtuple
 import binascii
-import lz4.frame as lz4f
 import zlib
-import io
 import os
 
 FileEntry = namedtuple('FileEntry', (
@@ -56,6 +54,7 @@ class Ba2Reader(object):
         self.file_entries = ()
         self.file_names = ()
         self.nametbl_size = 0
+        self.recordtbl_size = 0
 
     def seek(self, ofs, whence=0):
         if whence == 0:
@@ -83,6 +82,13 @@ class Ba2Reader(object):
         instance.load_(filename)
         return instance
     
+    @staticmethod
+    def get_num_files(filename):
+        assert filename.endswith('.ba2')
+        with open(filename, 'rb') as f:
+            magic, version, kind, num_files, nametbl_offset = unpack('=4sI4sIQ', f.read(24))
+        return num_files
+
     def load_(self, filename):
         assert filename.endswith('.ba2')
         with open(filename, 'rb') as f:
@@ -91,25 +97,29 @@ class Ba2Reader(object):
             f.seek(0)
             self._data = f.read(fsize)
         self.datasize = len(self._data)
-        magic, version, kind, num_files, nametbl_offset, unk1, unk2 = unpack('=4sI4sIQII', self.read(32))
+        magic, version, kind, num_files, nametbl_offset = unpack('=4sI4sIQ', self.read(24))
+        if version >= 2:
+            unks = []
+            unks.extend(unpack('=II', self.read(8)))
+            if version >= 3:
+                unks.extend(unpack('=I', self.read(4)))
+            print(f"unks: {unks}")
         self.nametbl_size = fsize - nametbl_offset
         assert magic == b'BTDX'
         #assert version == 2
         self.kind = kind
-        print(f"Loading '{kind.decode('latin-1')}' archive of {num_files} files.")
+        print(f"Loading '{kind.decode('latin-1')}' archive v{version} containing {num_files} files.")
         pos = self.tell()
         if nametbl_offset:
             self.seek(nametbl_offset)
             self.file_names = tuple(self.read_Name() for _ in range(num_files))
+        assert self.nametbl_size == self.tell() - nametbl_offset
         self.seek(pos)
         if kind == b'GNRL':
-            assert version == 2
             self.file_entries = tuple(self.read_FileEntry(i) for i in range(num_files))
         if kind == b'DX10':
-            print(f"version: {version}")
-            assert version == 3
-            unk3, = unpack('=I', self.read(4))
             self.file_entries = tuple(self.read_TexEntry(i) for i in range(num_files))
+        self.recordtbl_size = self.tell() - pos
 
     def read_FileEntry(self, i):
         x = unpack('=I4sIIQIII', self.read(36))
