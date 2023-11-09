@@ -28,7 +28,7 @@ CsSF_Biom = Struct(
 
 KNOWN_RESOURCE_IDS = (8, 88, 0, 80, 1, 81, 2, 82, 3, 83, 4, 84)
 
-with open("./biomes.csv", newline="") as csvfile:
+with open(Path(__file__).parent.resolve() / "./biomes.csv", newline="") as csvfile:
     reader = csv.DictReader(csvfile, fieldnames=("edid", "id", "name"))
     KNOWN_BIOMES = {int(x["id"], 16): (x["edid"], x["name"]) for x in reader}
 
@@ -42,11 +42,11 @@ class BiomFile(object):
     def __init__(self):
         self.planet_name = None
         self.biomeIds = set()
-        self.resourcesPerBiome = dict()
-        self.grid1A = []
-        self.grid1B = []
-        self.grid2A = []
-        self.grid2B = []
+        self.resourcesPerBiomeId = dict()
+        self.biomeGridN = []
+        self.resrcGridN = []
+        self.biomeGridS = []
+        self.resrcGridS = []
 
     def load(self, filename):
         assert filename.endswith(".biom")
@@ -73,13 +73,19 @@ class BiomFile(object):
 
     def save(self, filename):
         assert filename.endswith(".biom")
-        self.biomeIds = sorted(set(self.biomeGridN) | set(self.biomeGridS))
+        obj = dict(
+            biomeIds=sorted(set(self.biomeGridN) | set(self.biomeGridS)),
+            biomeGridN=self.biomeGridN,
+            biomeGridS=self.biomeGridS,
+            resrcGridN=self.resrcGridN,
+            resrcGridS=self.resrcGridS,
+        )
         assert len(self.biomeGridN) == 0x10000
         assert len(self.biomeGridS) == 0x10000
         assert len(self.resrcGridN) == 0x10000
         assert len(self.resrcGridS) == 0x10000
         with open(filename, "wb") as f:
-            CsSF_Biom.build_stream(self, f)
+            CsSF_Biom.build_stream(obj, f)
         print(f"Saved '{filename}'.")
 
     def plot2d(self):
